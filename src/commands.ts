@@ -243,7 +243,6 @@ export const INTERNAL_ONLY_COMMANDS = [
   onboarding,
   share,
   summary,
-  teleport,
   antTrace,
   perfIssue,
   env,
@@ -338,6 +337,7 @@ const COMMANDS = memoize((): Command[] => [
   passes,
   ...(peersCmd ? [peersCmd] : []),
   tasks,
+  teleport,
   ...(workflowsCmd ? [workflowsCmd] : []),
   ...(torch ? [torch] : []),
   ...(process.env.USER_TYPE === 'ant' && !process.env.IS_DEMO
