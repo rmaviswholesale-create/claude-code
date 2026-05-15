@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Valley of the Sun Moving | Phoenix, AZ</title>
+  <meta name="description" content="Valley of the Sun Moving – trusted local and long-distance movers serving the greater Phoenix, AZ area. Free quotes, expert packing, and junk removal." />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --blue:   #1E3A8A;
+      --blue-d: #162d6b;
+      --orange: #F97316;
+      --orange-d: #ea6c09;
+      --gray:   #F1F5F9;
+      --text:   #1E293B;
+      --muted:  #64748B;
+      --white:  #ffffff;
+      --radius: 10px;
+      --shadow: 0 4px 24px rgba(0,0,0,0.10);
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      color: var(--text);
+      line-height: 1.6;
+    }
+
+    /* ── NAV ── */
+    nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: var(--blue);
+      padding: 0 5%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 68px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.18);
+    }
+    .nav-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+    }
+    .nav-logo {
+      width: 44px;
+      height: 44px;
+      background: var(--orange);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .nav-logo svg { width: 26px; height: 26px; fill: #fff; }
+    .nav-name {
+      color: #fff;
+      font-weight: 700;
+      font-size: 1.1rem;
+      line-height: 1.2;
+    }
+    .nav-name span { color: var(--orange); }
+    .nav-links {
+      display: flex;
+      gap: 28px;
+      list-style: none;
+    }
+    .nav-links a {
+      color: rgba(255,255,255,0.85);
+      text-decoration: none;
+      font-size: 0.95rem;
+      font-weight: 500;
+      transition: color 0.2s;
+    }
+    .nav-links a:hover { color: var(--orange); }
+    .nav-cta {
+      background: var(--orange);
+      color: #fff !important;
+      padding: 8px 20px;
+      border-radius: 6px;
+      font-weight: 600 !important;
+      transition: background 0.2s !important;
+    }
+    .nav-cta:hover { background: var(--orange-d) !important; color: #fff !important; }
+    .hamburger {
+      display: none;
+      flex-direction: column;
+      gap: 5px;
+      cursor: pointer;
+      background: none;
+      border: none;
+      padding: 4px;
+    }
+    .hamburger span {
+      display: block;
+      width: 24px;
+      height: 2px;
+      background: #fff;
+      border-radius: 2px;
+      transition: 0.3s;
+    }
+
+    /* ── HERO ── */
+    .hero {
+      background: linear-gradient(135deg, var(--blue) 0%, #2d4fa3 60%, #1a3070 100%);
+      color: #fff;
+      padding: 100px 5% 80px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.04'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+    }
+    .hero-badge {
+      display: inline-block;
+      background: rgba(249,115,22,0.2);
+      border: 1px solid rgba(249,115,22,0.5);
+      color: #fdba74;
+      padding: 6px 18px;
+      border-radius: 50px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      margin-bottom: 20px;
+    }
+    .hero h1 {
+      font-size: clamp(2rem, 5vw, 3.4rem);
+      font-weight: 800;
+      line-height: 1.15;
+      margin-bottom: 20px;
+      max-width: 780px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .hero h1 span { color: var(--orange); }
+    .hero p {
+      font-size: 1.15rem;
+      color: rgba(255,255,255,0.82);
+      max-width: 560px;
+      margin: 0 auto 36px;
+    }
+    .hero-buttons {
+      display: flex;
+      gap: 16px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .btn {
+      display: inline-block;
+      padding: 14px 32px;
+      border-radius: 8px;
+      font-weight: 700;
+      font-size: 1rem;
+      text-decoration: none;
+      transition: all 0.2s;
+      cursor: pointer;
+    }
+    .btn-primary {
+      background: var(--orange);
+      color: #fff;
+    }
+    .btn-primary:hover { background: var(--orange-d); transform: translateY(-2px); box-shadow: 0 6px 20px rgba(249,115,22,0.4); }
+    .btn-outline {
+      background: transparent;
+      color: #fff;
+      border: 2px solid rgba(255,255,255,0.5);
+    }
+    .btn-outline:hover { border-color: #fff; background: rgba(255,255,255,0.1); }
+    .hero-stats {
+      display: flex;
+      justify-content: center;
+      gap: 48px;
+      margin-top: 60px;
+      flex-wrap: wrap;
+    }
+    .stat { text-align: center; }
+    .stat-num {
+      font-size: 2rem;
+      font-weight: 800;
+      color: var(--orange);
+    }
+    .stat-label {
+      font-size: 0.85rem;
+      color: rgba(255,255,255,0.7);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    /* ── SECTION BASE ── */
+    section { padding: 80px 5%; }
+    .section-label {
+      text-align: center;
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--orange);
+      margin-bottom: 12px;
+    }
+    .section-title {
+      text-align: center;
+      font-size: clamp(1.6rem, 3vw, 2.2rem);
+      font-weight: 800;
+      color: var(--blue);
+      margin-bottom: 14px;
+    }
+    .section-sub {
+      text-align: center;
+      color: var(--muted);
+      font-size: 1rem;
+      max-width: 560px;
+      margin: 0 auto 48px;
+    }
+
+    /* ── SERVICES ── */
+    .services { background: var(--gray); }
+    .services-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 24px;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+    .service-card {
+      background: var(--white);
+      border-radius: var(--radius);
+      padding: 36px 28px;
+      text-align: center;
+      box-shadow: var(--shadow);
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .service-card:hover { transform: translateY(-6px); box-shadow: 0 12px 36px rgba(0,0,0,0.13); }
+    .service-icon {
+      width: 64px;
+      height: 64px;
+      background: linear-gradient(135deg, var(--blue), #3b64c8);
+      border-radius: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 20px;
+    }
+    .service-icon svg { width: 32px; height: 32px; fill: #fff; }
+    .service-card h3 {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--blue);
+      margin-bottom: 10px;
+    }
+    .service-card p { color: var(--muted); font-size: 0.95rem; }
+
+    /* ── ABOUT ── */
+    .about-inner {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 60px;
+      align-items: center;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+    .about-img {
+      background: linear-gradient(135deg, var(--blue) 0%, #2d4fa3 100%);
+      border-radius: var(--radius);
+      min-height: 380px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .about-img-icon { opacity: 0.15; }
+    .about-img-icon svg { width: 220px; height: 220px; fill: #fff; }
+    .about-img-badge {
+      position: absolute;
+      bottom: 24px;
+      left: 24px;
+      background: var(--orange);
+      color: #fff;
+      border-radius: 8px;
+      padding: 12px 18px;
+      font-weight: 700;
+      font-size: 0.9rem;
+      line-height: 1.3;
+    }
+    .about-content .section-title,
+    .about-content .section-label { text-align: left; }
+    .about-content p {
+      color: var(--muted);
+      margin-bottom: 16px;
+      font-size: 1rem;
+    }
+    .about-checks {
+      list-style: none;
+      margin: 20px 0 28px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .about-checks li {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .check-icon {
+      width: 22px;
+      height: 22px;
+      background: var(--orange);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .check-icon svg { width: 12px; height: 12px; fill: #fff; }
+
+    /* ── WHY US ── */
+    .why { background: var(--gray); }
+    .why-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 24px;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+    .why-card {
+      background: var(--white);
+      border-radius: var(--radius);
+      padding: 28px 22px;
+      text-align: center;
+      box-shadow: var(--shadow);
+    }
+    .why-num {
+      font-size: 2.6rem;
+      font-weight: 900;
+      color: var(--orange);
+      line-height: 1;
+      margin-bottom: 6px;
+    }
+    .why-card h4 {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--blue);
+      margin-bottom: 6px;
+    }
+    .why-card p { font-size: 0.85rem; color: var(--muted); }
+
+    /* ── CONTACT ── */
+    .contact-inner {
+      display: grid;
+      grid-template-columns: 1fr 1.2fr;
+      gap: 60px;
+      max-width: 1100px;
+      margin: 0 auto;
+      align-items: start;
+    }
+    .contact-info h3 {
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: var(--blue);
+      margin-bottom: 8px;
+    }
+    .contact-info > p { color: var(--muted); margin-bottom: 28px; }
+    .contact-item {
+      display: flex;
+      gap: 14px;
+      margin-bottom: 22px;
+      align-items: flex-start;
+    }
+    .contact-item-icon {
+      width: 44px;
+      height: 44px;
+      background: linear-gradient(135deg, var(--blue), #3b64c8);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .contact-item-icon svg { width: 22px; height: 22px; fill: #fff; }
+    .contact-item-text { font-size: 0.95rem; }
+    .contact-item-text strong { display: block; color: var(--blue); font-weight: 700; margin-bottom: 2px; }
+    .contact-item-text span { color: var(--muted); }
+    .contact-form {
+      background: var(--gray);
+      border-radius: var(--radius);
+      padding: 36px 32px;
+    }
+    .contact-form h3 {
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: var(--blue);
+      margin-bottom: 24px;
+    }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .form-group { margin-bottom: 18px; }
+    .form-group label {
+      display: block;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+      width: 100%;
+      padding: 11px 14px;
+      border: 1.5px solid #CBD5E1;
+      border-radius: 7px;
+      font-size: 0.95rem;
+      font-family: inherit;
+      color: var(--text);
+      background: #fff;
+      transition: border-color 0.2s;
+      outline: none;
+    }
+    .form-group input:focus,
+    .form-group select:focus,
+    .form-group textarea:focus { border-color: var(--blue); }
+    .form-group textarea { resize: vertical; min-height: 90px; }
+    .form-submit {
+      width: 100%;
+      padding: 14px;
+      background: var(--orange);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.2s;
+    }
+    .form-submit:hover { background: var(--orange-d); transform: translateY(-2px); }
+
+    /* ── FOOTER ── */
+    footer {
+      background: var(--blue-d);
+      color: rgba(255,255,255,0.75);
+      text-align: center;
+      padding: 32px 5%;
+      font-size: 0.9rem;
+    }
+    footer strong { color: #fff; }
+    footer a { color: var(--orange); text-decoration: none; }
+
+    /* ── MOBILE ── */
+    @media (max-width: 768px) {
+      .nav-links { display: none; }
+      .nav-links.open {
+        display: flex;
+        flex-direction: column;
+        position: absolute;
+        top: 68px;
+        left: 0;
+        right: 0;
+        background: var(--blue-d);
+        padding: 20px 5%;
+        gap: 18px;
+        box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+      }
+      .hamburger { display: flex; }
+      .about-inner,
+      .contact-inner { grid-template-columns: 1fr; }
+      .about-img { min-height: 220px; }
+      .form-row { grid-template-columns: 1fr; }
+      .hero-stats { gap: 28px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <a class="nav-brand" href="#top">
+    <div class="nav-logo">
+      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <path d="M3 11H1v2h2v-2zm4 0H5v2h2v-2zm14-4H7c-1.1 0-2 .9-2 2v7c0 1.1.9 2 2 2h.5c0 1.1.9 2 2 2s2-.9 2-2H15c0 1.1.9 2 2 2s2-.9 2-2h1c1.1 0 2-.9 2-2V9c0-1.66-1.34-3-3-3zm0 9h-1c0-1.1-.9-2-2-2s-2 .9-2 2H9.5c0-1.1-.9-2-2-2s-2 .9-2 2H7V9h14v7zm-3.5-7H12v4h5.5l-2-4z"/>
+      </svg>
+    </div>
+    <span class="nav-name">Valley of the Sun<br /><span>Moving</span></span>
+  </a>
+  <ul class="nav-links" id="navLinks">
+    <li><a href="#services">Services</a></li>
+    <li><a href="#about">About</a></li>
+    <li><a href="#why-us">Why Us</a></li>
+    <li><a href="#contact" class="nav-cta">Get a Free Quote</a></li>
+  </ul>
+  <button class="hamburger" id="hamburger" aria-label="Menu">
+    <span></span><span></span><span></span>
+  </button>
+</nav>
+
+<!-- HERO -->
+<section class="hero" id="top">
+  <div class="hero-badge">Serving the Greater Phoenix Area</div>
+  <h1>Your Move, Done <span>Right.</span></h1>
+  <p>Professional, reliable, and stress-free moving services across the Valley of the Sun and beyond.</p>
+  <div class="hero-buttons">
+    <a href="#contact" class="btn btn-primary">Get a Free Quote</a>
+    <a href="#services" class="btn btn-outline">Our Services</a>
+  </div>
+  <div class="hero-stats">
+    <div class="stat">
+      <div class="stat-num">500+</div>
+      <div class="stat-label">Moves Completed</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num">5★</div>
+      <div class="stat-label">Average Rating</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num">100%</div>
+      <div class="stat-label">Licensed &amp; Insured</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num">Free</div>
+      <div class="stat-label">Quotes</div>
+    </div>
+  </div>
+</section>
+
+<!-- SERVICES -->
+<section class="services" id="services">
+  <p class="section-label">What We Do</p>
+  <h2 class="section-title">Full-Service Moving Solutions</h2>
+  <p class="section-sub">From a single room to an entire home or office, we handle every aspect of your move with care.</p>
+  <div class="services-grid">
+
+    <div class="service-card">
+      <div class="service-icon">
+        <svg viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
+      </div>
+      <h3>Local Moves</h3>
+      <p>Efficient, careful moves throughout the Phoenix metro area. We know every neighborhood in the Valley.</p>
+    </div>
+
+    <div class="service-card">
+      <div class="service-icon">
+        <svg viewBox="0 0 24 24"><path d="M20 8h-3V4H3c-1.1 0-2 .9-2 2v11h2c0 1.66 1.34 3 3 3s3-1.34 3-3h6c0 1.66 1.34 3 3 3s3-1.34 3-3h2v-5l-3-4zM6 18.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm13.5-9l1.96 2.5H17V9.5h2.5zm-1.5 9c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/></svg>
+      </div>
+      <h3>Long-Distance Moves</h3>
+      <p>Relocating out of state? We handle cross-country moves with the same attention to detail as a local job.</p>
+    </div>
+
+    <div class="service-card">
+      <div class="service-icon">
+        <svg viewBox="0 0 24 24"><path d="M20 6h-2.18c.07-.44.18-.88.18-1.36C18 2.06 15.96 0 13.5 0c-1.5 0-2.81.75-3.5 1.95C9.31.75 8 0 6.5 0 4.04 0 2 2.06 2 4.64c0 .48.11.92.18 1.36H0v2h2v12h20V8h2V6h-4zM13.5 2c.83 0 1.5.67 1.5 1.5S14.33 5 13.5 5c-.65 0-1.21-.41-1.44-1H12V2.09c.46-.06.93-.09 1.5-.09zM6.5 2c.57 0 1.04.03 1.5.09V4h-.06C7.71 4.59 7.15 5 6.5 5 5.67 5 5 4.33 5 3.5S5.67 2 6.5 2zM4 8h7v10H4V8zm9 10V8h7v10h-7z"/></svg>
+      </div>
+      <h3>Packing &amp; Unpacking</h3>
+      <p>We supply the materials and do all the packing — fragile items, furniture, boxes — everything handled safely.</p>
+    </div>
+
+    <div class="service-card">
+      <div class="service-icon">
+        <svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zm2.46-7.12l1.41-1.41L12 12.59l2.12-2.12 1.41 1.41L13.41 14l2.12 2.12-1.41 1.41L12 15.41l-2.12 2.12-1.41-1.41L10.59 14l-2.13-2.12zM15.5 4l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+      </div>
+      <h3>Junk Removal</h3>
+      <p>Clearing out before or after a move? We haul away furniture, appliances, and unwanted items quickly.</p>
+    </div>
+
+  </div>
+</section>
+
+<!-- ABOUT -->
+<section id="about">
+  <div class="about-inner">
+    <div class="about-img">
+      <div class="about-img-icon">
+        <svg viewBox="0 0 24 24"><path d="M20 8h-3V4H3c-1.1 0-2 .9-2 2v11h2c0 1.66 1.34 3 3 3s3-1.34 3-3h6c0 1.66 1.34 3 3 3s3-1.34 3-3h2v-5l-3-4zM6 18.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm13.5-9l1.96 2.5H17V9.5h2.5zm-1.5 9c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/></svg>
+      </div>
+      <div class="about-img-badge">Locally Owned &amp; Operated<br/>Phoenix, AZ</div>
+    </div>
+    <div class="about-content">
+      <p class="section-label">About Us</p>
+      <h2 class="section-title">We Know the Valley Like the Back of Our Truck</h2>
+      <p>Valley of the Sun Moving was built on a simple idea: people deserve movers they can actually trust. From Scottsdale to Surprise, Chandler to Cave Creek — we've helped hundreds of families and businesses make their move stress-free.</p>
+      <p>We treat every job like it's our own home. Your belongings are handled with care, your time is respected, and your move stays on budget. No hidden fees, no surprises — just honest, hard-working movers you can count on.</p>
+      <ul class="about-checks">
+        <li>
+          <span class="check-icon"><svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg></span>
+          Licensed &amp; Fully Insured
+        </li>
+        <li>
+          <span class="check-icon"><svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg></span>
+          No Hidden Fees — Transparent Pricing
+        </li>
+        <li>
+          <span class="check-icon"><svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg></span>
+          Punctual, Professional, &amp; Friendly Team
+        </li>
+        <li>
+          <span class="check-icon"><svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg></span>
+          Free, No-Obligation Quotes
+        </li>
+      </ul>
+      <a href="#contact" class="btn btn-primary">Get Your Free Quote</a>
+    </div>
+  </div>
+</section>
+
+<!-- WHY US -->
+<section class="why" id="why-us">
+  <p class="section-label">Why Choose Us</p>
+  <h2 class="section-title">Moving Made Simple</h2>
+  <p class="section-sub">We take the stress out of moving so you can focus on your new beginning.</p>
+  <div class="why-grid">
+    <div class="why-card">
+      <div class="why-num">01</div>
+      <h4>Book Your Date</h4>
+      <p>Call or fill out our quick quote form. We'll lock in your move date fast.</p>
+    </div>
+    <div class="why-card">
+      <div class="why-num">02</div>
+      <h4>We Pack &amp; Load</h4>
+      <p>Our crew arrives on time, ready to pack, wrap, and load everything safely.</p>
+    </div>
+    <div class="why-card">
+      <div class="why-num">03</div>
+      <h4>We Transport</h4>
+      <p>Your belongings travel safely in our clean, well-maintained trucks.</p>
+    </div>
+    <div class="why-card">
+      <div class="why-num">04</div>
+      <h4>Settle In</h4>
+      <p>We unload and place everything exactly where you want it. You're home.</p>
+    </div>
+  </div>
+</section>
+
+<!-- CONTACT -->
+<section id="contact">
+  <p class="section-label">Contact Us</p>
+  <h2 class="section-title">Get Your Free Quote Today</h2>
+  <p class="section-sub">Ready to move? Reach out and we'll get back to you quickly with a free, no-obligation estimate.</p>
+  <div class="contact-inner">
+    <div class="contact-info">
+      <h3>Get in Touch</h3>
+      <p>We're available 7 days a week. Don't hesitate to call, text, or send us a message.</p>
+
+      <div class="contact-item">
+        <div class="contact-item-icon">
+          <svg viewBox="0 0 24 24"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>
+        </div>
+        <div class="contact-item-text">
+          <strong>Phone / Text</strong>
+          <span>(555) 000-0000</span>
+        </div>
+      </div>
+
+      <div class="contact-item">
+        <div class="contact-item-icon">
+          <svg viewBox="0 0 24 24"><path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>
+        </div>
+        <div class="contact-item-text">
+          <strong>Email</strong>
+          <span>info@valleyofthesunmoving.com</span>
+        </div>
+      </div>
+
+      <div class="contact-item">
+        <div class="contact-item-icon">
+          <svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+        </div>
+        <div class="contact-item-text">
+          <strong>Service Area</strong>
+          <span>Phoenix, Scottsdale, Tempe, Mesa, Chandler, Gilbert, Glendale &amp; surrounding areas</span>
+        </div>
+      </div>
+
+      <div class="contact-item">
+        <div class="contact-item-icon">
+          <svg viewBox="0 0 24 24"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67V7z"/></svg>
+        </div>
+        <div class="contact-item-text">
+          <strong>Hours</strong>
+          <span>Mon – Sat: 7:00 AM – 7:00 PM<br/>Sunday: By Appointment</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="contact-form">
+      <h3>Request a Free Quote</h3>
+      <form id="quoteForm" onsubmit="handleSubmit(event)">
+        <div class="form-row">
+          <div class="form-group">
+            <label for="firstName">First Name</label>
+            <input type="text" id="firstName" name="firstName" placeholder="John" required />
+          </div>
+          <div class="form-group">
+            <label for="lastName">Last Name</label>
+            <input type="text" id="lastName" name="lastName" placeholder="Smith" required />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="phone">Phone Number</label>
+            <input type="tel" id="phone" name="phone" placeholder="(555) 000-0000" required />
+          </div>
+          <div class="form-group">
+            <label for="email">Email</label>
+            <input type="email" id="email" name="email" placeholder="you@email.com" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="service">Service Needed</label>
+          <select id="service" name="service">
+            <option value="">Select a service…</option>
+            <option>Local Move</option>
+            <option>Long-Distance Move</option>
+            <option>Packing &amp; Unpacking</option>
+            <option>Junk Removal</option>
+            <option>Multiple Services</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="moveFrom">Moving From (City)</label>
+            <input type="text" id="moveFrom" name="moveFrom" placeholder="Phoenix" />
+          </div>
+          <div class="form-group">
+            <label for="moveTo">Moving To (City)</label>
+            <input type="text" id="moveTo" name="moveTo" placeholder="Scottsdale" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="message">Additional Details</label>
+          <textarea id="message" name="message" placeholder="Approximate move date, home size, anything else we should know…"></textarea>
+        </div>
+        <button type="submit" class="form-submit">Send My Free Quote Request</button>
+      </form>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <p><strong>Valley of the Sun Moving</strong> &nbsp;|&nbsp; Phoenix, AZ &nbsp;|&nbsp; <a href="tel:5550000000">(555) 000-0000</a> &nbsp;|&nbsp; <a href="mailto:info@valleyofthesunmoving.com">info@valleyofthesunmoving.com</a></p>
+  <p style="margin-top:8px">&copy; 2026 Valley of the Sun Moving. All rights reserved. Licensed &amp; Insured.</p>
+</footer>
+
+<script>
+  const hamburger = document.getElementById('hamburger');
+  const navLinks  = document.getElementById('navLinks');
+  hamburger.addEventListener('click', () => navLinks.classList.toggle('open'));
+  navLinks.querySelectorAll('a').forEach(a => a.addEventListener('click', () => navLinks.classList.remove('open')));
+
+  function handleSubmit(e) {
+    e.preventDefault();
+    const btn = e.target.querySelector('.form-submit');
+    btn.textContent = 'Sent! We\'ll be in touch soon.';
+    btn.style.background = '#16a34a';
+    btn.disabled = true;
+    e.target.reset();
+  }
+</script>
+</body>
+</html>
