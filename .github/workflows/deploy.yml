@@ -1,0 +1,86 @@
+name: Deploy to Hostinger VPS
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get VPS details from Hostinger API
+        id: vps
+        run: |
+          RESPONSE=$(curl -sf \
+            -H "Authorization: Bearer ${{ secrets.HOSTINGER_API_KEY }}" \
+            -H "Accept: application/json" \
+            "https://api.hostinger.com/api/vps/v1/virtual-machines")
+          echo "API Response: $RESPONSE"
+          VM_ID=$(echo "$RESPONSE" | jq -r '.data[0].id')
+          VM_IP=$(echo "$RESPONSE" | jq -r '.data[0] | .main_ip_address // .ip_address // .ipv4 // "UNKNOWN"')
+          if [ -z "$VM_ID" ] || [ "$VM_ID" = "null" ]; then
+            echo "ERROR: Could not retrieve VM ID. Check HOSTINGER_API_KEY secret."
+            exit 1
+          fi
+          echo "vm_id=$VM_ID" >> $GITHUB_OUTPUT
+          echo "vm_ip=$VM_IP" >> $GITHUB_OUTPUT
+          echo "Found VPS: ID=$VM_ID  IP=$VM_IP"
+
+      - name: Generate temporary SSH keypair
+        run: |
+          ssh-keygen -t ed25519 -f /tmp/deploy_key -N "" -C "github-actions-deploy-$(date +%s)"
+
+      - name: Register public key with Hostinger
+        id: pubkey
+        run: |
+          PUB_KEY=$(cat /tmp/deploy_key.pub)
+          RESPONSE=$(curl -sf -X POST \
+            -H "Authorization: Bearer ${{ secrets.HOSTINGER_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -H "Accept: application/json" \
+            "https://api.hostinger.com/api/vps/v1/public-keys" \
+            -d "{\"name\":\"gh-deploy-temp\",\"key\":\"$PUB_KEY\"}")
+          echo "Register response: $RESPONSE"
+          KEY_ID=$(echo "$RESPONSE" | jq -r '.data.id')
+          echo "key_id=$KEY_ID" >> $GITHUB_OUTPUT
+
+      - name: Attach key to VPS
+        run: |
+          curl -sf -X POST \
+            -H "Authorization: Bearer ${{ secrets.HOSTINGER_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            "https://api.hostinger.com/api/vps/v1/public-keys/attach/${{ steps.vps.outputs.vm_id }}" \
+            -d "{\"ids\":[${{ steps.pubkey.outputs.key_id }}]}"
+          echo "Waiting 60s for key to propagate..."
+          sleep 60
+
+      - name: Deploy site and configure nginx
+        run: |
+          VM_IP="${{ steps.vps.outputs.vm_ip }}"
+          SSHOPTS="-i /tmp/deploy_key -o StrictHostKeyChecking=no -o ConnectTimeout=30"
+          ssh $SSHOPTS root@$VM_IP "apt-get update -qq && apt-get install -y nginx && mkdir -p /var/www/valleyofthesunmoving"
+          scp $SSHOPTS index.html nginx.conf root@$VM_IP:/tmp/
+          ssh $SSHOPTS root@$VM_IP "
+            cp /tmp/index.html /var/www/valleyofthesunmoving/
+            chmod 644 /var/www/valleyofthesunmoving/index.html
+            chown -R www-data:www-data /var/www/valleyofthesunmoving
+            cp /tmp/nginx.conf /etc/nginx/sites-available/valleyofthesunmoving
+            ln -sf /etc/nginx/sites-available/valleyofthesunmoving /etc/nginx/sites-enabled/
+            rm -f /etc/nginx/sites-enabled/default
+            nginx -t && systemctl enable nginx && systemctl reload nginx
+            echo 'LIVE at: http://\$(curl -s ifconfig.me)'
+          "
+
+      - name: Cleanup temporary SSH key
+        if: always()
+        run: |
+          KEY_ID="${{ steps.pubkey.outputs.key_id }}"
+          if [ -n "$KEY_ID" ] && [ "$KEY_ID" != "null" ]; then
+            curl -s -X DELETE \
+              -H "Authorization: Bearer ${{ secrets.HOSTINGER_API_KEY }}" \
+              "https://api.hostinger.com/api/vps/v1/public-keys/$KEY_ID" || true
+          fi
