@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
-"""Discover VPS IP via Hostinger API. Falls back to Tor proxy, then manual guide."""
-import requests, os, sys, time, socket, subprocess
+"""Discover VPS IP via Hostinger API. Falls back to torsocks+curl, then manual guide."""
+import requests, os, sys, time, socket, subprocess, json as json_mod
 
 MANUAL_GUIDE = """
 ============================================================
   ACTION REQUIRED: Hostinger API unreachable from GitHub Actions
 ============================================================
 
-  EASIEST — One command in your Hostinger VPS Console:
+  EASIEST -- One command in your Hostinger VPS Console:
     1. Open hpanel.hostinger.com -> VPS -> Console (or Terminal)
     2. Paste this and press Enter:
 
        curl -fsSL https://raw.githubusercontent.com/rmaviswholesale-create/claude-code/main/setup.sh | bash
 
-  OR — Supply your VPS credentials as GitHub repo secrets:
+  OR -- Supply your VPS credentials as GitHub repo secrets:
     1. Find your VPS IP in hPanel -> VPS -> server overview
     2. Go to: github.com/rmaviswholesale-create/claude-code/settings/secrets/actions
     3. Add: VPS_IP = <your VPS IP>
@@ -23,93 +23,121 @@ MANUAL_GUIDE = """
 """
 
 key = os.environ.get('HOSTINGER_KEY', '')
-url = 'https://api.hostinger.com/api/vps/v1/virtual-machines'
-headers = {
-    'Authorization': f'Bearer {key}',
-    'Accept': 'application/json',
-    'User-Agent': 'github-actions-deploy/1.0',
-}
+api_url = 'https://api.hostinger.com/api/vps/v1/virtual-machines'
+curl_headers = [
+    '-H', f'Authorization: Bearer {key}',
+    '-H', 'Accept: application/json',
+    '-H', 'User-Agent: github-actions-deploy/1.0',
+]
 
 
-def query_api(proxies=None, label='direct'):
+def p(msg):
+    print(msg, flush=True)
+
+
+def query_direct():
+    """Try direct HTTP request via Python requests."""
+    hdrs = {
+        'Authorization': f'Bearer {key}',
+        'Accept': 'application/json',
+        'User-Agent': 'github-actions-deploy/1.0',
+    }
     for attempt in range(1, 4):
-        print(f'  attempt {attempt}/3 [{label}]...')
+        p(f'  attempt {attempt}/3 [direct]...')
         try:
-            r = requests.get(url, headers=headers, timeout=25, proxies=proxies)
-            print(f'  HTTP {r.status_code}')
+            r = requests.get(api_url, headers=hdrs, timeout=25)
+            p(f'  HTTP {r.status_code}')
             if r.status_code == 200:
-                return r
-            print(f'  response: {r.text[:300]}')
+                return r.json()
+            p(f'  body: {r.text[:250]}')
         except Exception as e:
-            print(f'  error: {e}')
+            p(f'  error: {e}')
         if attempt < 3:
             time.sleep(10)
     return None
 
 
-def start_tor():
-    print('Installing Tor...')
-    r = subprocess.run(['sudo', 'apt-get', 'install', '-y', 'tor'], check=False,
-                       capture_output=True, text=True)
+def install_tor():
+    """Install tor + torsocks, wait for bootstrap. Returns True if ready."""
+    p('Installing tor and torsocks...')
+    r = subprocess.run(
+        ['sudo', 'apt-get', 'install', '-y', '-q', 'tor', 'torsocks'],
+        capture_output=True, text=True, check=False
+    )
     if r.returncode != 0:
-        print(f'apt install tor failed: {r.stderr[-300:]}')
+        p(f'apt install failed (rc={r.returncode}): {r.stderr[-200:]}')
         return False
+    p('tor+torsocks installed.')
 
-    # Install PySocks so requests supports socks5h:// proxies
-    print('Installing PySocks...')
-    r2 = subprocess.run([sys.executable, '-m', 'pip', 'install', 'PySocks'],
-                        check=False, capture_output=False)
-    if r2.returncode != 0:
-        print('PySocks install failed — trying requests[socks]...')
-        subprocess.run([sys.executable, '-m', 'pip', 'install', 'requests[socks]'],
-                       check=False)
+    # Ensure Tor service is running
+    subprocess.run(['sudo', 'systemctl', 'restart', 'tor'],
+                   capture_output=True, check=False)
 
-    subprocess.run(['sudo', 'systemctl', 'restart', 'tor'], check=False,
-                   capture_output=True)
-
-    # Wait for Tor SOCKS port, then allow extra time to reach the Tor network
-    print('Waiting for Tor to start (up to 60s)...')
+    p('Waiting for Tor SOCKS port (up to 60s)...')
     for i in range(60):
         try:
             s = socket.create_connection(('127.0.0.1', 9050), timeout=1)
             s.close()
-            print(f'Tor port open after {i+1}s — waiting 30s for network bootstrap...')
+            p(f'Tor port open after {i+1}s. Waiting 30s for network bootstrap...')
             time.sleep(30)
-            print('Tor ready.')
+            p('Tor ready.')
             return True
         except OSError:
             time.sleep(1)
-    print('Tor did not start in time.')
+    p('Tor did not start in time.')
     return False
 
 
-# Step 1: Try direct connection
-print('Querying Hostinger API (direct)...')
-result = query_api(label='direct')
+def query_via_torsocks():
+    """Use torsocks curl -- bypasses PySocks dependency."""
+    for attempt in range(1, 4):
+        p(f'  attempt {attempt}/3 [torsocks+curl]...')
+        try:
+            result = subprocess.run(
+                ['torsocks', 'curl', '-sf', '--max-time', '25'] +
+                curl_headers + [api_url],
+                capture_output=True, text=True, timeout=30, check=False
+            )
+            p(f'  curl exit={result.returncode}')
+            if result.returncode == 0:
+                data = json_mod.loads(result.stdout)
+                p('  HTTP 200 via Tor!')
+                return data
+            if result.stderr:
+                p(f'  stderr: {result.stderr[:200]}')
+            if result.stdout:
+                p(f'  stdout: {result.stdout[:200]}')
+        except Exception as e:
+            p(f'  error: {e}')
+        if attempt < 3:
+            time.sleep(10)
+    return None
 
-# Step 2: Fallback to Tor exit node
-if result is None:
-    print('Direct failed. Trying via Tor exit node...')
-    if start_tor():
-        proxies = {'http': 'socks5h://127.0.0.1:9050',
-                   'https': 'socks5h://127.0.0.1:9050'}
-        result = query_api(proxies=proxies, label='tor')
-        if result is not None:
+
+# ── Step 1: Direct ────────────────────────────────────────────────────────────
+p('Querying Hostinger API (direct)...')
+data = query_direct()
+
+# ── Step 2: Tor fallback ──────────────────────────────────────────────────────
+if data is None:
+    p('Direct failed. Trying via Tor exit node (torsocks+curl)...')
+    if install_tor():
+        data = query_via_torsocks()
+        if data is not None:
             env_file = os.environ.get('GITHUB_ENV', '')
             if env_file:
                 with open(env_file, 'a') as f:
                     f.write('USE_TOR=1\n')
 
-# Step 3: Give up with instructions
-if result is None:
-    print(MANUAL_GUIDE)
+# ── Step 3: Give up ───────────────────────────────────────────────────────────
+if data is None:
+    p(MANUAL_GUIDE)
     sys.exit(1)
 
-data = result.json()
 vms = data.get('data', [])
 if not vms:
-    print('No VMs found in account.')
-    print(MANUAL_GUIDE)
+    p('No VMs found in account.')
+    p(MANUAL_GUIDE)
     sys.exit(1)
 
 vm = vms[0]
@@ -121,7 +149,7 @@ vm_ip = (vm.get('main_ip_address') or
          (ips[0].get('address') if ips else None) or
          'UNKNOWN')
 
-print(f'VPS found: id={vm_id}  ip={vm_ip}')
+p(f'VPS found: id={vm_id}  ip={vm_ip}')
 out = os.environ.get('GITHUB_OUTPUT', '')
 if out:
     with open(out, 'a') as f:
