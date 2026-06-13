@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-import requests, os, sys
+"""Discover VPS IP via Hostinger API with retry logic."""
+import requests, os, sys, time
 
 key = os.environ['HOSTINGER_KEY']
 headers = {
@@ -8,23 +9,37 @@ headers = {
     'User-Agent': 'Mozilla/5.0 (compatible; deploy/1.0)'
 }
 
-try:
-    r = requests.get('https://api.hostinger.com/api/vps/v1/virtual-machines',
-                     headers=headers, timeout=15)
-    print(f'HTTP Status: {r.status_code}')
-    print(f'Response: {r.text[:500]}')
-except Exception as e:
-    print(f'Connection error: {e}')
-    sys.exit(1)
-
-if r.status_code != 200:
-    print(f'API error {r.status_code}: {r.text}')
+for attempt in range(1, 4):
+    print(f'Attempt {attempt}/3...')
+    try:
+        r = requests.get('https://api.hostinger.com/api/vps/v1/virtual-machines',
+                         headers=headers, timeout=15)
+        print(f'HTTP Status: {r.status_code}')
+        print(f'Response: {r.text[:500]}')
+        if r.status_code == 200:
+            break
+        elif r.status_code == 530:
+            print('Cloudflare DNS error - waiting 10s before retry...')
+            if attempt < 3:
+                time.sleep(10)
+            continue
+        else:
+            print(f'API error {r.status_code}: {r.text}')
+            sys.exit(1)
+    except Exception as e:
+        print(f'Connection error: {e}')
+        if attempt < 3:
+            time.sleep(10)
+            continue
+        sys.exit(1)
+else:
+    print('All attempts failed')
     sys.exit(1)
 
 data = r.json()
 vms = data.get('data', [])
 if not vms:
-    print('No VMs found')
+    print('No VMs found in account')
     sys.exit(1)
 
 vm = vms[0]
