@@ -1,10 +1,14 @@
 name: Deploy to Hostinger VPS
 
-# Triggers on every push to main, or run manually from the Actions tab
 on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      hostinger_api_key:
+        description: 'Hostinger API Key (overrides secret if provided)'
+        required: false
+        type: string
 
 jobs:
   deploy:
@@ -13,12 +17,19 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # Mask the API key so it never appears in logs
+      - name: Mask API key
+        run: |
+          KEY="${{ inputs.hostinger_api_key || secrets.HOSTINGER_API_KEY }}"
+          echo "::add-mask::$KEY"
+          echo "HOSTINGER_KEY=$KEY" >> $GITHUB_ENV
+
       # ── Step 1: Use Hostinger API to discover VPS IP and ID automatically ──
       - name: Get VPS details from Hostinger API
         id: vps
         run: |
           RESPONSE=$(curl -sf \
-            -H "Authorization: Bearer ${{ secrets.HOSTINGER_API_KEY }}" \
+            -H "Authorization: Bearer $HOSTINGER_KEY" \
             -H "Accept: application/json" \
             "https://api.hostinger.com/api/vps/v1/virtual-machines")
           echo "API Response: $RESPONSE"
@@ -34,7 +45,7 @@ jobs:
           ')
 
           if [ -z "$VM_ID" ] || [ "$VM_ID" = "null" ]; then
-            echo "ERROR: Could not retrieve VM ID. Check HOSTINGER_API_KEY secret."
+            echo "ERROR: Could not retrieve VM ID. Check HOSTINGER_API_KEY secret or input."
             exit 1
           fi
           echo "vm_id=$VM_ID"   >> $GITHUB_OUTPUT
@@ -54,7 +65,7 @@ jobs:
         run: |
           PUB_KEY=$(cat /tmp/deploy_key.pub)
           RESPONSE=$(curl -sf -X POST \
-            -H "Authorization: Bearer ${{ secrets.HOSTINGER_API_KEY }}" \
+            -H "Authorization: Bearer $HOSTINGER_KEY" \
             -H "Content-Type: application/json" \
             -H "Accept: application/json" \
             "https://api.hostinger.com/api/vps/v1/public-keys" \
@@ -68,7 +79,7 @@ jobs:
       - name: Attach key to VPS
         run: |
           RESPONSE=$(curl -sf -X POST \
-            -H "Authorization: Bearer ${{ secrets.HOSTINGER_API_KEY }}" \
+            -H "Authorization: Bearer $HOSTINGER_KEY" \
             -H "Content-Type: application/json" \
             -H "Accept: application/json" \
             "https://api.hostinger.com/api/vps/v1/public-keys/attach/${{ steps.vps.outputs.vm_id }}" \
@@ -120,7 +131,7 @@ jobs:
           KEY_ID="${{ steps.pubkey.outputs.key_id }}"
           if [ -n "$KEY_ID" ] && [ "$KEY_ID" != "null" ]; then
             curl -s -X DELETE \
-              -H "Authorization: Bearer ${{ secrets.HOSTINGER_API_KEY }}" \
+              -H "Authorization: Bearer $HOSTINGER_KEY" \
               "https://api.hostinger.com/api/vps/v1/public-keys/$KEY_ID" || true
             echo "Temporary SSH key removed."
           fi
