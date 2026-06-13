@@ -38,19 +38,18 @@ jobs:
         run: |
           DIRECT="${{ inputs.vps_ip }}"
           SECRET="${{ secrets.VPS_IP }}"
+          KNOWN_IP="187.127.254.249"
           if [ -n "$DIRECT" ]; then
             echo "Source: workflow_dispatch input"
             echo "vm_ip=$DIRECT" >> $GITHUB_OUTPUT
-            echo "vm_id=manual" >> $GITHUB_OUTPUT
           elif [ -n "$SECRET" ]; then
             echo "Source: VPS_IP repository secret"
             echo "vm_ip=$SECRET" >> $GITHUB_OUTPUT
-            echo "vm_id=manual" >> $GITHUB_OUTPUT
           else
-            echo "No manual IP provided — querying Hostinger API..."
-            pip install requests -q
-            python3 scripts/discover_vps.py
+            echo "Source: hardcoded IP from Hostinger welcome email"
+            echo "vm_ip=$KNOWN_IP" >> $GITHUB_OUTPUT
           fi
+          echo "vm_id=manual" >> $GITHUB_OUTPUT
 
       - name: Generate temporary SSH keypair
         run: ssh-keygen -t ed25519 -f /tmp/deploy_key -N "" -C "gh-actions-$(date +%s)"
