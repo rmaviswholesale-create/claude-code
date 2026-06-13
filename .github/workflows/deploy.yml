@@ -6,7 +6,11 @@ on:
   workflow_dispatch:
     inputs:
       hostinger_api_key:
-        description: 'Hostinger API Key (overrides env if provided)'
+        description: 'Hostinger API Key'
+        required: false
+        type: string
+      vps_ip:
+        description: 'VPS IP address (skip API discovery if provided)'
         required: false
         type: string
 
@@ -33,78 +37,146 @@ jobs:
           echo "HOSTINGER_KEY=$KEY" >> $GITHUB_ENV
           echo "Key length: ${#KEY}"
 
-      # ── Step 1: Use Hostinger API to discover VPS IP and ID automatically ──
-      - name: Get VPS details from Hostinger API
+      # ── Step 1: Get VPS details (via input, secret, or API) ──
+      - name: Get VPS details
         id: vps
         run: |
-          HTTP_CODE=$(curl -s -o /tmp/api_response.json -w "%{http_code}" \
-            -H "Authorization: Bearer $HOSTINGER_KEY" \
-            -H "Accept: application/json" \
-            "https://api.hostinger.com/api/vps/v1/virtual-machines")
-          echo "HTTP Status: $HTTP_CODE"
-          echo "API Response: $(cat /tmp/api_response.json)"
+          # Check if IP was provided directly
+          DIRECT_IP="${{ inputs.vps_ip }}"
+          SECRET_IP="${{ secrets.VPS_IP }}"
 
-          if [ "$HTTP_CODE" != "200" ]; then
-            echo "ERROR: API returned HTTP $HTTP_CODE"
-            exit 1
+          if [ -n "$DIRECT_IP" ]; then
+            echo "Using provided IP: $DIRECT_IP"
+            echo "vm_ip=$DIRECT_IP" >> $GITHUB_OUTPUT
+            echo "vm_id=manual" >> $GITHUB_OUTPUT
+          elif [ -n "$SECRET_IP" ]; then
+            echo "Using secret IP"
+            echo "vm_ip=$SECRET_IP" >> $GITHUB_OUTPUT
+            echo "vm_id=manual" >> $GITHUB_OUTPUT
+          else
+            echo "Discovering VPS via Hostinger API..."
+            pip install requests --quiet
+            python3 << 'PYEOF'
+import requests, os, sys, json
+
+key = os.environ['HOSTINGER_KEY']
+headers = {
+    'Authorization': f'Bearer {key}',
+    'Accept': 'application/json',
+    'User-Agent': 'Mozilla/5.0 (compatible; deployment-script/1.0)'
+}
+
+try:
+    r = requests.get('https://api.hostinger.com/api/vps/v1/virtual-machines',
+                     headers=headers, timeout=15)
+    print(f'HTTP Status: {r.status_code}')
+    print(f'Response: {r.text[:500]}')
+    if r.status_code == 200:
+        data = r.json()
+        vm = data['data'][0]
+        vm_id = vm.get('id', 'unknown')
+        vm_ip = (vm.get('main_ip_address') or
+                 vm.get('ip_address') or
+                 vm.get('ipv4') or
+                 (vm.get('ips', [{}])[0].get('address', 'UNKNOWN'))
+                 if vm.get('ips') else 'UNKNOWN')
+        print(f'Found VPS: id={vm_id} ip={vm_ip}')
+        with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+            f.write(f'vm_id={vm_id}\n')
+            f.write(f'vm_ip={vm_ip}\n')
+    else:
+        print(f'API error: {r.status_code} {r.text}')
+        sys.exit(1)
+except Exception as e:
+    print(f'Error: {e}')
+    sys.exit(1)
+PYEOF
           fi
 
-          RESPONSE=$(cat /tmp/api_response.json)
-          VM_ID=$(echo "$RESPONSE" | jq -r '.data[0].id')
-          VM_IP=$(echo "$RESPONSE" | jq -r '
-            .data[0] |
-            .main_ip_address //
-            .ip_address //
-            .ipv4 //
-            (.ips[0].address // empty) //
-            "UNKNOWN"
-          ')
-
-          if [ -z "$VM_ID" ] || [ "$VM_ID" = "null" ]; then
-            echo "ERROR: Could not retrieve VM ID."
-            exit 1
-          fi
-          echo "vm_id=$VM_ID"   >> $GITHUB_OUTPUT
-          echo "vm_ip=$VM_IP"   >> $GITHUB_OUTPUT
-          echo "Found VPS — ID: $VM_ID  IP: $VM_IP"
-
-      # ── Step 2: Generate a temporary SSH keypair for this deployment ──
+      # ── Step 2: Generate a temporary SSH keypair ──
       - name: Generate temporary SSH keypair
         run: |
           ssh-keygen -t ed25519 -f /tmp/deploy_key -N "" \
             -C "github-actions-deploy-$(date +%s)"
           echo "Public key: $(cat /tmp/deploy_key.pub)"
 
-      # ── Step 3: Register the public key with your Hostinger account ──
+      # ── Step 3: Register the public key with Hostinger ──
       - name: Register public key with Hostinger
         id: pubkey
+        if: steps.vps.outputs.vm_id != 'manual'
         run: |
           PUB_KEY=$(cat /tmp/deploy_key.pub)
-          RESPONSE=$(curl -sf -X POST \
-            -H "Authorization: Bearer $HOSTINGER_KEY" \
-            -H "Content-Type: application/json" \
-            -H "Accept: application/json" \
-            "https://api.hostinger.com/api/vps/v1/public-keys" \
-            -d "{\"name\":\"gh-deploy-temp\",\"key\":\"$PUB_KEY\"}")
-          echo "Register response: $RESPONSE"
-          KEY_ID=$(echo "$RESPONSE" | jq -r '.data.id')
-          echo "key_id=$KEY_ID" >> $GITHUB_OUTPUT
-          echo "Registered key ID: $KEY_ID"
+          python3 << PYEOF
+import requests, os, sys, json
 
-      # ── Step 4: Attach the key to your VPS ──
+key = os.environ['HOSTINGER_KEY']
+pub_key = open('/tmp/deploy_key.pub').read().strip()
+headers = {
+    'Authorization': f'Bearer {key}',
+    'Content-Type': 'application/json',
+    'Accept': 'application/json'
+}
+
+r = requests.post('https://api.hostinger.com/api/vps/v1/public-keys',
+                  headers=headers,
+                  json={'name': 'gh-deploy-temp', 'key': pub_key},
+                  timeout=15)
+print(f'Register response: {r.status_code} {r.text}')
+if r.status_code in (200, 201):
+    key_id = r.json()['data']['id']
+    with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+        f.write(f'key_id={key_id}\n')
+else:
+    sys.exit(1)
+PYEOF
+
+      # ── Step 4: Attach key to VPS ──
       - name: Attach key to VPS
+        if: steps.vps.outputs.vm_id != 'manual'
         run: |
-          RESPONSE=$(curl -sf -X POST \
-            -H "Authorization: Bearer $HOSTINGER_KEY" \
-            -H "Content-Type: application/json" \
-            -H "Accept: application/json" \
-            "https://api.hostinger.com/api/vps/v1/public-keys/attach/${{ steps.vps.outputs.vm_id }}" \
-            -d "{\"ids\":[${{ steps.pubkey.outputs.key_id }}]}")
-          echo "Attach response: $RESPONSE"
-          echo "Waiting 60s for key to propagate to VPS authorized_keys..."
-          sleep 60
+          python3 << PYEOF
+import requests, os, sys, time
 
-      # ── Step 5: SSH in and deploy the site ──
+key = os.environ['HOSTINGER_KEY']
+vm_id = '${{ steps.vps.outputs.vm_id }}'
+key_id = '${{ steps.pubkey.outputs.key_id }}'
+headers = {
+    'Authorization': f'Bearer {key}',
+    'Content-Type': 'application/json',
+    'Accept': 'application/json'
+}
+
+r = requests.post(f'https://api.hostinger.com/api/vps/v1/public-keys/attach/{vm_id}',
+                  headers=headers,
+                  json={'ids': [int(key_id)]},
+                  timeout=15)
+print(f'Attach response: {r.status_code} {r.text}')
+if r.status_code not in (200, 201):
+    sys.exit(1)
+print('Waiting 60s for key propagation...')
+time.sleep(60)
+PYEOF
+
+      # ── Step 4b: For manual IP mode, authorize key directly on VPS ──
+      - name: Authorize SSH key on VPS (manual IP mode)
+        if: steps.vps.outputs.vm_id == 'manual'
+        run: |
+          VM_IP="${{ steps.vps.outputs.vm_ip }}"
+          PUB_KEY=$(cat /tmp/deploy_key.pub)
+          # Use VPS_PASSWORD secret if available for initial key install
+          if [ -n "${{ secrets.VPS_PASSWORD }}" ]; then
+            sudo apt-get install -y sshpass
+            sshpass -p '${{ secrets.VPS_PASSWORD }}' ssh \
+              -o StrictHostKeyChecking=no \
+              -o ConnectTimeout=30 \
+              root@$VM_IP \
+              "mkdir -p ~/.ssh && echo '$PUB_KEY' >> ~/.ssh/authorized_keys && chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys"
+            echo "SSH key authorized on VPS"
+          else
+            echo "No VPS_PASSWORD secret set — skipping key install (deploy will fail if key not pre-authorized)"
+          fi
+
+      # ── Step 5: Deploy site and configure nginx ──
       - name: Deploy site and configure nginx
         run: |
           VM_IP="${{ steps.vps.outputs.vm_ip }}"
@@ -137,14 +209,20 @@ jobs:
             echo '================================================'
           "
 
-      # ── Step 6: Always remove the temporary key (even if deploy fails) ──
+      # ── Step 6: Cleanup temp SSH key ──
       - name: Cleanup temporary SSH key
-        if: always()
+        if: always() && steps.vps.outputs.vm_id != 'manual'
         run: |
           KEY_ID="${{ steps.pubkey.outputs.key_id }}"
           if [ -n "$KEY_ID" ] && [ "$KEY_ID" != "null" ]; then
-            curl -s -X DELETE \
-              -H "Authorization: Bearer $HOSTINGER_KEY" \
-              "https://api.hostinger.com/api/vps/v1/public-keys/$KEY_ID" || true
+            python3 << PYEOF
+import requests, os
+key = os.environ['HOSTINGER_KEY']
+key_id = '$KEY_ID'
+headers = {'Authorization': f'Bearer {key}'}
+r = requests.delete(f'https://api.hostinger.com/api/vps/v1/public-keys/{key_id}',
+                    headers=headers, timeout=15)
+print(f'Cleanup: {r.status_code}')
+PYEOF
             echo "Temporary SSH key removed."
           fi
