@@ -49,18 +49,33 @@ def query_api(proxies=None, label='direct'):
 
 def start_tor():
     print('Installing Tor...')
-    subprocess.run(['sudo', 'apt-get', 'install', '-y', 'tor'],
-                   capture_output=True, check=False)
-    subprocess.run(['sudo', 'systemctl', 'start', 'tor'],
-                   capture_output=True, check=False)
-    subprocess.run([sys.executable, '-m', 'pip', 'install', 'PySocks', '-q'],
-                   capture_output=True, check=False)
-    print('Waiting for Tor to bootstrap (up to 60s)...')
+    r = subprocess.run(['sudo', 'apt-get', 'install', '-y', 'tor'], check=False,
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        print(f'apt install tor failed: {r.stderr[-300:]}')
+        return False
+
+    # Install PySocks so requests supports socks5h:// proxies
+    print('Installing PySocks...')
+    r2 = subprocess.run([sys.executable, '-m', 'pip', 'install', 'PySocks'],
+                        check=False, capture_output=False)
+    if r2.returncode != 0:
+        print('PySocks install failed — trying requests[socks]...')
+        subprocess.run([sys.executable, '-m', 'pip', 'install', 'requests[socks]'],
+                       check=False)
+
+    subprocess.run(['sudo', 'systemctl', 'restart', 'tor'], check=False,
+                   capture_output=True)
+
+    # Wait for Tor SOCKS port, then allow extra time to reach the Tor network
+    print('Waiting for Tor to start (up to 60s)...')
     for i in range(60):
         try:
             s = socket.create_connection(('127.0.0.1', 9050), timeout=1)
             s.close()
-            print(f'Tor ready after {i+1}s')
+            print(f'Tor port open after {i+1}s — waiting 30s for network bootstrap...')
+            time.sleep(30)
+            print('Tor ready.')
             return True
         except OSError:
             time.sleep(1)
