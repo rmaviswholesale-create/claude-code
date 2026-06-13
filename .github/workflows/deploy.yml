@@ -6,13 +6,19 @@ on:
   workflow_dispatch:
     inputs:
       vps_ip:
-        description: 'VPS IP (skips Hostinger API discovery if set)'
+        description: 'VPS IP (skips Hostinger API if set)'
+        required: false
+        type: string
+      vps_password:
+        description: 'VPS root password (used when vps_ip is set)'
         required: false
         type: string
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      HAS_VPS_PASS: ${{ secrets.VPS_PASSWORD != '' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -23,24 +29,22 @@ jobs:
           B="WdBt0UjsAWeGKk5o"
           C="Mc00Lete39985371"
           KEY="${A}${B}${C}"
-          if [ -n "$INPUT_KEY" ]; then KEY="$INPUT_KEY"; fi
           if [ -n "$SECRET_KEY" ]; then KEY="$SECRET_KEY"; fi
           echo "::add-mask::$KEY"
           echo "HOSTINGER_KEY=$KEY" >> $GITHUB_ENV
         env:
-          INPUT_KEY: ${{ inputs.hostinger_api_key }}
           SECRET_KEY: ${{ secrets.HOSTINGER_API_KEY }}
 
-      - name: Get VPS IP
+      - name: Resolve VPS IP
         id: vps
         run: |
-          DIRECT_IP="${{ inputs.vps_ip }}"
-          SECRET_IP="${{ secrets.VPS_IP }}"
-          if [ -n "$DIRECT_IP" ]; then
-            echo "vm_ip=$DIRECT_IP" >> $GITHUB_OUTPUT
+          DIRECT="${{ inputs.vps_ip }}"
+          SECRET="${{ secrets.VPS_IP }}"
+          if [ -n "$DIRECT" ]; then
+            echo "vm_ip=$DIRECT" >> $GITHUB_OUTPUT
             echo "vm_id=manual" >> $GITHUB_OUTPUT
-          elif [ -n "$SECRET_IP" ]; then
-            echo "vm_ip=$SECRET_IP" >> $GITHUB_OUTPUT
+          elif [ -n "$SECRET" ]; then
+            echo "vm_ip=$SECRET" >> $GITHUB_OUTPUT
             echo "vm_id=manual" >> $GITHUB_OUTPUT
           else
             pip install requests -q
@@ -48,31 +52,40 @@ jobs:
           fi
 
       - name: Generate SSH keypair
-        run: |
-          ssh-keygen -t ed25519 -f /tmp/deploy_key -N "" -C "gh-actions-$(date +%s)"
+        run: ssh-keygen -t ed25519 -f /tmp/deploy_key -N "" -C "gh-actions-$(date +%s)"
 
-      - name: Register SSH key with Hostinger
+      - name: Register SSH key with Hostinger API
         id: pubkey
         if: steps.vps.outputs.vm_id != 'manual'
         run: python3 scripts/register_key.py
 
-      - name: Attach SSH key to VPS
+      - name: Attach SSH key to VPS via API
         if: steps.vps.outputs.vm_id != 'manual'
         run: python3 scripts/attach_key.py
         env:
           VM_ID: ${{ steps.vps.outputs.vm_id }}
           KEY_ID: ${{ steps.pubkey.outputs.key_id }}
 
-      - name: Authorize key via password (manual IP mode)
-        if: steps.vps.outputs.vm_id == 'manual' && secrets.VPS_PASSWORD != ''
+      - name: Authorize SSH key via password
+        if: steps.vps.outputs.vm_id == 'manual'
         run: |
+          VPS_PASS_INPUT="${{ inputs.vps_password }}"
+          VPS_PASS_SECRET="$VPS_PASS_SECRET_VAL"
+          PASS=""
+          if [ -n "$VPS_PASS_INPUT" ]; then PASS="$VPS_PASS_INPUT"; fi
+          if [ -n "$VPS_PASS_SECRET" ]; then PASS="$VPS_PASS_SECRET"; fi
+          if [ -z "$PASS" ]; then
+            echo "No VPS password provided - skipping key authorization"
+            exit 0
+          fi
           sudo apt-get install -y sshpass -q
           PUB=$(cat /tmp/deploy_key.pub)
-          sshpass -p "$VPS_PASS" ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 \
+          sshpass -p "$PASS" ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 \
             root@${{ steps.vps.outputs.vm_ip }} \
-            "mkdir -p ~/.ssh; echo '$PUB' >> ~/.ssh/authorized_keys; chmod 700 ~/.ssh; chmod 600 ~/.ssh/authorized_keys"
+            "mkdir -p ~/.ssh && printf '%s\n' '$PUB' >> ~/.ssh/authorized_keys && chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys"
+          echo "SSH key authorized on VPS"
         env:
-          VPS_PASS: ${{ secrets.VPS_PASSWORD }}
+          VPS_PASS_SECRET_VAL: ${{ secrets.VPS_PASSWORD }}
 
       - name: Deploy site via SSH
         run: |
@@ -80,16 +93,7 @@ jobs:
           OPTS="-i /tmp/deploy_key -o StrictHostKeyChecking=no -o ConnectTimeout=30"
           ssh $OPTS root@$IP "apt-get update -qq; apt-get install -y nginx; mkdir -p /var/www/valleyofthesunmoving"
           scp $OPTS index.html nginx.conf root@$IP:/tmp/
-          ssh $OPTS root@$IP "
-            cp /tmp/index.html /var/www/valleyofthesunmoving/
-            chmod 644 /var/www/valleyofthesunmoving/index.html
-            chown -R www-data:www-data /var/www/valleyofthesunmoving
-            cp /tmp/nginx.conf /etc/nginx/sites-available/valleyofthesunmoving
-            ln -sf /etc/nginx/sites-available/valleyofthesunmoving /etc/nginx/sites-enabled/
-            rm -f /etc/nginx/sites-enabled/default
-            nginx -t && systemctl enable nginx && systemctl reload nginx
-            echo 'LIVE at:' \$(curl -s --max-time 5 ifconfig.me)
-          "
+          ssh $OPTS root@$IP 'cp /tmp/index.html /var/www/valleyofthesunmoving/ && chmod 644 /var/www/valleyofthesunmoving/index.html && chown -R www-data:www-data /var/www/valleyofthesunmoving && cp /tmp/nginx.conf /etc/nginx/sites-available/valleyofthesunmoving && ln -sf /etc/nginx/sites-available/valleyofthesunmoving /etc/nginx/sites-enabled/ && rm -f /etc/nginx/sites-enabled/default && nginx -t && systemctl enable nginx && systemctl reload nginx && echo LIVE_AT=$(curl -s --max-time 5 ifconfig.me)'
 
       - name: Cleanup SSH key
         if: always()
