@@ -75,6 +75,7 @@ jobs:
           PASS=""
           if [ -n "$PASS_INPUT" ]; then PASS="$PASS_INPUT"; fi
           if [ -n "$PASS_SECRET" ]; then PASS="$PASS_SECRET"; fi
+          if [ -n "$PASS" ]; then echo "::add-mask::$PASS"; fi
           if [ -z "$PASS" ]; then
             echo "::warning::No VPS password provided — SSH key authorization skipped."
             echo "If SSH key auth is already set up on the VPS, deployment may still succeed."
