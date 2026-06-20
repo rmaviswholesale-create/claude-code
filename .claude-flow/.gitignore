@@ -5,3 +5,12 @@ sessions/
 neural/
 *.log
 *.tmp
+
+# Auto-updated daemon state and metrics (background daemon rewrites these constantly)
+daemon-state.json
+daemon.pid
+metrics/codebase-map.json
+metrics/consolidation.json
+metrics/performance.json
+metrics/security-audit.json
+metrics/test-gaps.json
