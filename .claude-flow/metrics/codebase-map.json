@@ -1,0 +1,11 @@
+{
+  "timestamp": "2026-06-20T03:45:13.090Z",
+  "projectRoot": "/home/user/claude-code",
+  "structure": {
+    "hasPackageJson": false,
+    "hasTsConfig": false,
+    "hasClaudeConfig": true,
+    "hasClaudeFlow": true
+  },
+  "scannedAt": 1781927113090
+}
