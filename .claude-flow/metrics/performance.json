@@ -1,0 +1,128 @@
+{
+  "timestamp": "2026-06-20T04:08:57.582Z",
+  "mode": "headless",
+  "workerType": "optimize",
+  "model": "sonnet",
+  "durationMs": 84737,
+  "executionId": "optimize_1781928452845_tl3rx0",
+  "success": true,
+  "findings": {
+    "sections": [
+      {
+        "title": "Performance Analysis",
+        "content": "\n",
+        "level": 2
+      },
+      {
+        "title": "1. N+1 Query Patterns",
+        "content": "\n**Sequential dynamic imports in `createSession.ts`**\n\nEvery call to `createBridgeSession` re-awaits 8+ dynamic imports sequentially, each a potential module resolution round-trip:\n\n```typescript\n// Current — sequential, re-evaluated on every call\nconst { getClaudeAIOAuthTokens } = await import('../utils/auth.js')\nconst { getOrganizationUUID } = await import('../services/oauth/client.js')\nconst { getOauthConfig } = await import('../constants/oauth.js')\nconst { getOAuthHeaders } = await import('../utils/teleport/api.js')\nconst { parseGitHubRepository } = await import('../utils/detectRepository.js')\nconst { getDefaultBranch } = await import('../utils/git.js')\nconst { getMainLoopModel } = await import('../utils/model/model.js')\nconst { default: axios } = await import('axios')\n```\n\n**Fix** — parallelize with `Promise.all` and cache results (module-level singletons are fine since these are pure imports):\n\n```typescript\n// At top of file — run once, reused across calls\nconst [\n  { getClaudeAIOAuthTokens },\n  { getOrganizationUUID },\n  { getOauthConfig },\n  { getOAuthHeaders },\n  { parseGitHubRepository, parseGitRemote },\n  { getDefaultBranch },\n  { getMainLoopModel },\n  { default: axios },\n] = await Promise.all([\n  import('../utils/auth.js'),\n  import('../services/oauth/client.js'),\n  import('../constants/oauth.js'),\n  import('../utils/teleport/api.js'),\n  import('../utils/detectRepository.js'),\n  import('../utils/git.js'),\n  import('../utils/model/model.js'),\n  import('axios'),\n])\n```\n\n**Sequential history page fetching (`sessionHistory.ts`)**\n\n`fetchOlderEvents` is a cursor-based API — callers must chain page after page sequentially. If the caller is trying to load N pages of history, they cannot parallelize. The `HISTORY_PAGE_SIZE = 100` default compounds this: loading 500 events = 5 sequential HTTP round-trips. No fix within this file, but callers should prefetch eagerly or load lazily on-demand rather than eagerly loading all history upfront.\n\n---\n\n",
+        "level": 3
+      },
+      {
+        "title": "2. Unnecessary Re-renders in React",
+        "content": "\n**Shimmer animation in `bridgeStatusUtil.ts`**\n\n`computeShimmerSegments` is called on every 150ms tick (`SHIMMER_INTERVAL_MS`) and iterates the full grapheme segmenter on the entire status string each time. The text rarely changes, but segmentation runs unconditionally:\n\n```typescript\n// Current — full segmentation every 150ms\nfor (const { segment } of getGraphemeSegmenter().segment(text)) {\n  const segWidth = stringWidth(segment)\n  // ...\n}\n```\n\n**Fix** — memoize the segmented form; only re-segment when `text` changes:\n\n```typescript\nlet cachedText = ''\nlet cachedSegments: { segment: string; width: number }[] = []\n\nfunction getSegments(text: string) {\n  if (text !== cachedText) {\n    cachedText = text\n    cachedSegments = [...getGraphemeSegmenter().segment(text)].map(s => ({\n      segment: s.segment,\n      width: stringWidth(s.segment),\n    }))\n  }\n  return cachedSegments\n}\n```\n\n**`buildActiveFooterText` / `buildIdleFooterText` called on every status render**\n\nThese reconstruct the same string on every render. The URL argument is also stable between renders. Both should be memoized or computed once when the URL changes and stored in the closure state already present in `createBridgeLogger`.\n\n---\n\n",
+        "level": 3
+      },
+      {
+        "title": "3. Caching Opportunities",
+        "content": "\n**`getBridgeAccessToken()` — no caching (`bridgeConfig.ts`)**\n\n```typescript\n// Called on every bridge API call, resolves OAuth tokens fresh each time\nexport function getBridgeAccessToken(): string | undefined {\n  return getBridgeTokenOverride() ?? getClaudeAIOAuthTokens()?.accessToken\n}\n```\n\nThe token is stable between refreshes. A short-lived cache (e.g., 30s TTL) would eliminate redundant OAuth keychain reads in the polling loop:\n\n```typescript\nlet tokenCache: { value: string; expiresAt: number } | undefined\n\nexport function getBridgeAccessToken(): string | undefined {\n  const now = Date.now()\n  if (tokenCache && now < tokenCache.expiresAt) return tokenCache.value\n  const value = getBridgeTokenOverride() ?? getClaudeAIOAuthTokens()?.accessToken\n  if (value) tokenCache = { value, expiresAt: now + 30_000 }\n  return value\n}\n```\n\n**`isMultiSessionSpawnEnabled()` hits GrowthBook on every poll loop iteration (`bridgeMain.ts`)**\n\n```typescript\nasync function isMultiSessionSpawnEnabled(): Promise<boolean> {\n  return checkGate_CACHED_OR_BLOCKING('tengu_ccr_bridge_multi_session')\n}\n```\n\nDespite the function name suggesting caching, `checkGate_CACHED_OR_BLOCKING` does async work on cache miss. Cache the result after the first `true`:\n\n```typescript\nlet multiSessionEnabled: boolean | undefined\n\nasync function isMultiSessionSpawnEnabled(): Promise<boolean> {\n  if (multiSessionEnabled !== undefined) return multiSessionEnabled\n  multiSessionEnabled = await checkGate_CACHED_OR_BLOCKING('tengu_ccr_bridge_multi_session')\n  return multiSessionEnabled\n}\n```\n\n**`oauthHeaders()` object allocation in `codeSessionApi.ts`**\n\nEvery `createCodeSession` and `fetchRemoteCredentials` call allocates a new headers object. The `accessToken` is the only dynamic piece — hoist the static fields:\n\n```typescript\nconst STATIC_HEADERS = {\n  'Content-Type': 'application/json',\n  'anthropic-version': ANTHROPIC_VERSION,\n} as const\n\nfunction oauthHeaders(accessToken: string): Record<string, string> {\n  return { ...STATIC_HEADERS, Authorization: `Bearer ${accessToken}` }\n}\n```\n\n---\n\n",
+        "level": 3
+      },
+      {
+        "title": "4. Memory Leaks",
+        "content": "\n**`sessionDisplayInfo` Map grows unbounded (`bridgeUI.ts`)**\n\n```typescript\nconst sessionDisplayInfo = new Map<\n  string,\n  { title?: string; url: string; activity?: SessionActivity }\n>()\n```\n\nIn multi-session mode (`--capacity`), sessions cycle through over time. There's no cleanup path visible for completed sessions. If `sessionDisplayInfo` is keyed by compat session ID and sessions are never removed, this accumulates indefinitely across a long-running bridge.\n\n**Fix** — add a `deleteSession` path that clears the map entry when a session reaches terminal state:\n\n```typescript\nfunction onSessionDone(compatSessionId: string): void {\n  sessionDisplayInfo.delete(compatSessionId)\n  // existing cleanup...\n}\n```\n\n**Event listener accumulation in `capacityWake.ts`**\n\n```typescript\nouterSignal.addEventListener('abort', abort, { once: true })\ncapSig.addEventListener('abort', abort, { once: true })\nreturn {\n  signal: merged.signal,\n  cleanup: () => {\n    outerSignal.removeEventListener('abort', abort)\n    capSig.removeEventListener('abort', abort)\n  },\n}\n```\n\nThe `cleanup()` must be called after every sleep — if a caller awaits the abort signal instead of calling cleanup on normal resolution, both listeners stay registered until the outer signal fires. The callers should use `try/finally`:\n\n```typescript\nconst { signal, cleanup } = capacityWake.signal()\ntry {\n  await sleep(delayMs, signal)\n} finally {\n  cleanup()\n}\n```\n\n**`agentColorMap` in `bootstrap/state.ts` — unbounded growth**\n\n```typescript\nagentColorMap: Map<string, AgentColorName>\n```\n\nAgent color assignments accumulate for the lifetime of a session. For long-running sessions spawning many sub-agents, this grows without bound. A `WeakMap` can't be used here (string keys), but a max-size LRU or periodic prune on terminal task state would bound it.\n\n---\n\n",
+        "level": 3
+      },
+      {
+        "title": "5. Redundant Computations",
+        "content": "\n**`getBridgeDisabledReason()` — sequential async checks (`bridgeEnabled.ts`)**\n\n```typescript\nexport async function getBridgeDisabledReason(): Promise<string | null> {\n  if (feature('BRIDGE_MODE')) {\n    if (!isClaudeAISubscriber()) { ... }\n    if (!hasProfileScope()) { ... }\n    if (!getOauthAccountInfo()?.organizationUuid) { ... }\n    if (!(await checkGate_CACHED_OR_BLOCKING('tengu_ccr_bridge'))) { ... }\n```\n\nThe first three checks are synchronous and cheap. The async GrowthBook check is only needed if all three pass. This is already fine — but the try/catch wrappers for `isClaudeAISubscriber`, `hasProfileScope`, and `getOauthAccountInfo` each duplicate the same pattern. Extract once:\n\n```typescript\nfunction safeCall<T>(fn: () => T, fallback: T): T {\n  try { return fn() } catch { return fallback }\n}\n\nconst subscriber = safeCall(authModule.isClaudeAISubscriber, false)\nconst profileScope = safeCall(authModule.hasProfileScope, false)\nconst accountInfo = safeCall(authModule.getOauthAccountInfo, undefined)\n```\n\n**`faultQueue.findIndex()` called on every bridge API method (`bridgeDebug.ts`)**\n\n```typescript\nfunction consume(method: BridgeFault['method']): BridgeFault | null {\n  const idx = faultQueue.findIndex(f => f.method === method)\n```\n\nEach `pollForWork`, `registerBridgeEnvironment`, etc. call does a linear scan. The queue is tiny in practice (test-only code), but switching to a `Map<method, BridgeFault[]>` makes intent clearer and removes the O(n) scan:\n\n```typescript\nconst faultMap = new Map<BridgeFault['method'], BridgeFault[]>()\n\nfunction consume(method: BridgeFault['method']): BridgeFault | null {\n  const queue = faultMap.get(method)\n  if (!queue?.length) return null\n  const fault = queue[0]!\n  fault.count--\n  if (fault.count <= 0) queue.shift()\n  return fault\n}\n```\n\n**`computeGlimmerIndex` recomputes `cycleLength` every tick (`bridgeStatusUtil.ts`)**\n\n```typescript\nexport function computeGlimmerIndex(tick: number, messageWidth: number): number {\n  const cycleLength = messageWidth + 20       // recomputed every 150ms\n  return messageWidth + 10 - (tick % cycleLength)\n}\n```\n\n`messageWidth` only changes when the status line text changes (rare). Hoist the derived values into the render loop state so they aren't recomputed on every animation tick.\n\n---\n\n",
+        "level": 3
+      },
+      {
+        "title": "Priority Summary",
+        "content": "| Issue | Impact | File |\n|---|---|---|\n| Sequential dynamic imports | High — adds 8 RTTs to every `createBridgeSession` call | `createSession.ts` |\n| `isMultiSessionSpawnEnabled` uncached | High — async gate check in hot poll loop | `bridgeMain.ts` |\n| `sessionDisplayInfo` unbounded | Medium — memory leak in long-running multi-session bridge | `bridgeUI.ts` |\n| Shimmer grapheme segmentation | Medium — CPU waste on every 150ms animation tick | `bridgeStatusUtil.ts` |\n| `getBridgeAccessToken` uncached | Low-Medium — OAuth keychain read on each API call | `bridgeConfig.ts` |\n| `cleanup()` not in `finally` | Low — listener leak on normal sleep resolution | `capacityWake.ts` callers |",
+        "level": 2
+      }
+    ],
+    "codeBlocks": [
+      {
+        "language": "typescript",
+        "code": "// Current — sequential, re-evaluated on every call\nconst { getClaudeAIOAuthTokens } = await import('../utils/auth.js')\nconst { getOrganizationUUID } = await import('../services/oauth/client.js')\nconst { getOauthConfig } = await import('../constants/oauth.js')\nconst { getOAuthHeaders } = await import('../utils/teleport/api.js')\nconst { parseGitHubRepository } = await import('../utils/detectRepository.js')\nconst { getDefaultBranch } = await import('../utils/git.js')\nconst { getMainLoopModel } = await import('../utils/model/model.js')\nconst { default: axios } = await import('axios')"
+      },
+      {
+        "language": "typescript",
+        "code": "// At top of file — run once, reused across calls\nconst [\n  { getClaudeAIOAuthTokens },\n  { getOrganizationUUID },\n  { getOauthConfig },\n  { getOAuthHeaders },\n  { parseGitHubRepository, parseGitRemote },\n  { getDefaultBranch },\n  { getMainLoopModel },\n  { default: axios },\n] = await Promise.all([\n  import('../utils/auth.js'),\n  import('../services/oauth/client.js'),\n  import('../constants/oauth.js'),\n  import('../utils/teleport/api.js'),\n  import('../utils/detectRepository.js'),\n  import('../utils/git.js'),\n  import('../utils/model/model.js'),\n  import('axios'),\n])"
+      },
+      {
+        "language": "typescript",
+        "code": "// Current — full segmentation every 150ms\nfor (const { segment } of getGraphemeSegmenter().segment(text)) {\n  const segWidth = stringWidth(segment)\n  // ...\n}"
+      },
+      {
+        "language": "typescript",
+        "code": "let cachedText = ''\nlet cachedSegments: { segment: string; width: number }[] = []\n\nfunction getSegments(text: string) {\n  if (text !== cachedText) {\n    cachedText = text\n    cachedSegments = [...getGraphemeSegmenter().segment(text)].map(s => ({\n      segment: s.segment,\n      width: stringWidth(s.segment),\n    }))\n  }\n  return cachedSegments\n}"
+      },
+      {
+        "language": "typescript",
+        "code": "// Called on every bridge API call, resolves OAuth tokens fresh each time\nexport function getBridgeAccessToken(): string | undefined {\n  return getBridgeTokenOverride() ?? getClaudeAIOAuthTokens()?.accessToken\n}"
+      },
+      {
+        "language": "typescript",
+        "code": "let tokenCache: { value: string; expiresAt: number } | undefined\n\nexport function getBridgeAccessToken(): string | undefined {\n  const now = Date.now()\n  if (tokenCache && now < tokenCache.expiresAt) return tokenCache.value\n  const value = getBridgeTokenOverride() ?? getClaudeAIOAuthTokens()?.accessToken\n  if (value) tokenCache = { value, expiresAt: now + 30_000 }\n  return value\n}"
+      },
+      {
+        "language": "typescript",
+        "code": "async function isMultiSessionSpawnEnabled(): Promise<boolean> {\n  return checkGate_CACHED_OR_BLOCKING('tengu_ccr_bridge_multi_session')\n}"
+      },
+      {
+        "language": "typescript",
+        "code": "let multiSessionEnabled: boolean | undefined\n\nasync function isMultiSessionSpawnEnabled(): Promise<boolean> {\n  if (multiSessionEnabled !== undefined) return multiSessionEnabled\n  multiSessionEnabled = await checkGate_CACHED_OR_BLOCKING('tengu_ccr_bridge_multi_session')\n  return multiSessionEnabled\n}"
+      },
+      {
+        "language": "typescript",
+        "code": "const STATIC_HEADERS = {\n  'Content-Type': 'application/json',\n  'anthropic-version': ANTHROPIC_VERSION,\n} as const\n\nfunction oauthHeaders(accessToken: string): Record<string, string> {\n  return { ...STATIC_HEADERS, Authorization: `Bearer ${accessToken}` }\n}"
+      },
+      {
+        "language": "typescript",
+        "code": "const sessionDisplayInfo = new Map<\n  string,\n  { title?: string; url: string; activity?: SessionActivity }\n>()"
+      },
+      {
+        "language": "typescript",
+        "code": "function onSessionDone(compatSessionId: string): void {\n  sessionDisplayInfo.delete(compatSessionId)\n  // existing cleanup...\n}"
+      },
+      {
+        "language": "typescript",
+        "code": "outerSignal.addEventListener('abort', abort, { once: true })\ncapSig.addEventListener('abort', abort, { once: true })\nreturn {\n  signal: merged.signal,\n  cleanup: () => {\n    outerSignal.removeEventListener('abort', abort)\n    capSig.removeEventListener('abort', abort)\n  },\n}"
+      },
+      {
+        "language": "typescript",
+        "code": "const { signal, cleanup } = capacityWake.signal()\ntry {\n  await sleep(delayMs, signal)\n} finally {\n  cleanup()\n}"
+      },
+      {
+        "language": "typescript",
+        "code": "agentColorMap: Map<string, AgentColorName>"
+      },
+      {
+        "language": "typescript",
+        "code": "export async function getBridgeDisabledReason(): Promise<string | null> {\n  if (feature('BRIDGE_MODE')) {\n    if (!isClaudeAISubscriber()) { ... }\n    if (!hasProfileScope()) { ... }\n    if (!getOauthAccountInfo()?.organizationUuid) { ... }\n    if (!(await checkGate_CACHED_OR_BLOCKING('tengu_ccr_bridge'))) { ... }"
+      },
+      {
+        "language": "typescript",
+        "code": "function safeCall<T>(fn: () => T, fallback: T): T {\n  try { return fn() } catch { return fallback }\n}\n\nconst subscriber = safeCall(authModule.isClaudeAISubscriber, false)\nconst profileScope = safeCall(authModule.hasProfileScope, false)\nconst accountInfo = safeCall(authModule.getOauthAccountInfo, undefined)"
+      },
+      {
+        "language": "typescript",
+        "code": "function consume(method: BridgeFault['method']): BridgeFault | null {\n  const idx = faultQueue.findIndex(f => f.method === method)"
+      },
+      {
+        "language": "typescript",
+        "code": "const faultMap = new Map<BridgeFault['method'], BridgeFault[]>()\n\nfunction consume(method: BridgeFault['method']): BridgeFault | null {\n  const queue = faultMap.get(method)\n  if (!queue?.length) return null\n  const fault = queue[0]!\n  fault.count--\n  if (fault.count <= 0) queue.shift()\n  return fault\n}"
+      },
+      {
+        "language": "typescript",
+        "code": "export function computeGlimmerIndex(tick: number, messageWidth: number): number {\n  const cycleLength = messageWidth + 20       // recomputed every 150ms\n  return messageWidth + 10 - (tick % cycleLength)\n}"
+      }
+    ]
+  },
+  "rawOutputPreview": "I'll analyze the provided code files across all five performance categories.\n\n## Performance Analysis\n\n### 1. N+1 Query Patterns\n\n**Sequential dynamic imports in `createSession.ts`**\n\nEvery call to `createBridgeSession` re-awaits 8+ dynamic imports sequentially, each a potential module resolution round-trip:\n\n```typescript\n// Current — sequential, re-evaluated on every call\nconst { getClaudeAIOAuthTokens } = await import('../utils/auth.js')\nconst { getOrganizationUUID } = await import('../services/oauth/client.js')\nconst { getOauthConfig } = await import('../constants/oauth.js')\nconst { getOAuthHeaders } = await import('../utils/teleport/api.js')\nconst { parseGitHubRepository } = await import('../utils/detectRepository.js')\nconst { getDefaultBranch } = await import('../utils/git.js')\nconst { getMainLoopModel } = await import('../utils/model/model.js')\nconst { default: axios } = await import('axios')\n```\n\n**Fix** — parallelize with `Promise.all` and cache results (module-level singletons are fine since these are pure imports):\n\n```typescript\n// At top of file — run once, reused across calls\nconst [\n  { getClaudeAIOAuthTokens },\n  { getOrganizationUUID },\n  { getOauthConfig },\n  { getOAuthHeaders },\n  { parseGitHubRepository, parseGitRemote },\n  { getDefaultBranch },\n  { getMainLoopModel },\n  { default: axios },\n] = await Promise.all([\n  import('../utils/auth.js'),\n  import('../services/oauth/client.js'),\n  import('../constants/oauth.js'),\n  import('../utils/teleport/api.js'),\n  import('../utils/detectRepository.js'),\n  import('../utils/git.js'),\n  import('../utils/model/model.js'),\n  import('axios'),\n])\n```\n\n**Sequential history page fetching (`sessionHistory.ts`)**\n\n`fetchOlderEvents` is a cursor-based API — callers must chain page after page sequentially. If the caller is trying to load N pages of history, they cannot parallelize. The `HISTORY_PAGE_SIZE = 100` default compounds this: loading 500 events = 5 sequential HTTP round-trips. No fix within this file, but c",
+  "rawOutputLength": 10367
+}
