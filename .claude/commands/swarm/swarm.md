@@ -2,29 +2,22 @@
 
 Main swarm orchestration command for Claude Flow V3.
 
-## 🚨 CRITICAL: Background Execution Pattern
+## 🚨 Background Execution Pattern
 
-**When spawning a swarm, Claude Code MUST:**
+Spawn ALL agents in ONE message with `run_in_background: true`. Then **STOP AND WAIT** — agents are async; the runtime delivers results automatically. Don't poll, don't ask for status, don't call `swarm status` until all agents complete.
 
-1. **Spawn ALL agents in background** using `run_in_background: true`
-2. **Put ALL Task calls in ONE message** for parallel execution
-3. **Display status board** with ASCII table and emojis
-4. **STOP and WAIT** - don't add more tool calls or poll status
-
-## ✅ CORRECT Spawn Pattern
+## ✅ Correct Spawn Pattern
 
 ```javascript
-// Spawn ALL agents IN BACKGROUND in ONE message
-Task({ prompt: "Research...", subagent_type: "researcher", run_in_background: true })
-Task({ prompt: "Design...", subagent_type: "architect", run_in_background: true })
-Task({ prompt: "Implement...", subagent_type: "coder", run_in_background: true })
-Task({ prompt: "Test...", subagent_type: "tester", run_in_background: true })
-Task({ prompt: "Review...", subagent_type: "reviewer", run_in_background: true })
+// All calls in ONE message — run_in_background: true on every Task()
+Agent({ prompt: "Research...",   subagent_type: "researcher",  run_in_background: true })
+Agent({ prompt: "Design...",     subagent_type: "architect",   run_in_background: true })
+Agent({ prompt: "Implement...",  subagent_type: "coder",       run_in_background: true })
+Agent({ prompt: "Test...",       subagent_type: "tester",      run_in_background: true })
+Agent({ prompt: "Review...",     subagent_type: "reviewer",    run_in_background: true })
 ```
 
-## 📊 Required Status Display (ASCII Table)
-
-**After spawning, Claude Code MUST display this status board:**
+## 📊 Required Status Display
 
 ```
 ╔══════════════════════════════════════════════════════════════╗
@@ -45,43 +38,33 @@ Task({ prompt: "Review...", subagent_type: "reviewer", run_in_background: true }
 ╚══════════════════════════════════════════════════════════════╝
 ```
 
-## ❌ DO NOT
-
-```
-TaskOutput({ task_id: "..." })     // ❌ Don't poll
-"Should I check on agents?"        // ❌ Don't ask
-swarm status                       // ❌ Don't check repeatedly
-```
-
 ## 📋 Agent Types by Task
 
-```
-╔═══════════════════╦═════════════════════════════════════════════╗
-║  TASK TYPE        ║  AGENTS                                     ║
-╠═══════════════════╬═════════════════════════════════════════════╣
-║  🆕 New Feature   ║  researcher, architect, coder, tester, rev  ║
-║  🐛 Bug Fix       ║  researcher, coder, tester                  ║
-║  ♻️ Refactor      ║  architect, coder, reviewer                 ║
-║  🔒 Security      ║  security-architect, auditor, reviewer      ║
-║  ⚡ Performance   ║  researcher, perf-engineer, coder           ║
-║  📚 Documentation ║  researcher, api-docs                       ║
-╚═══════════════════╩═════════════════════════════════════════════╝
-```
+See canonical routing table in `CLAUDE.md` → "Agent Routing". Quick reference:
 
-## Usage
+| Task type | Agents |
+|---|---|
+| New Feature | researcher, architect, coder, tester, reviewer |
+| Bug Fix | researcher, coder, tester |
+| Refactor | architect, coder, reviewer |
+| Security | security-architect, auditor, reviewer |
+| Performance | researcher, perf-engineer, coder |
+| Documentation | researcher, documenter |
+
+## 🔧 Usage
+
 ```bash
-npx @claude-flow/cli@latest swarm init --topology hierarchical
-npx @claude-flow/cli@latest swarm status  # Only after completion
+cf=npx\ @claude-flow/cli@latest
+$cf swarm init --topology hierarchical
+$cf swarm status  # only after all agents complete
 ```
 
-## Options
-```
-╔════════════════════════╦═══════════════════════════════════════╗
-║  OPTION                ║  DESCRIPTION                          ║
-╠════════════════════════╬═══════════════════════════════════════╣
-║  --strategy <type>     ║  research, development, analysis      ║
-║  --topology <type>     ║  hierarchical, mesh, ring, star       ║
-║  --max-agents <n>      ║  Maximum agents (default: 15)         ║
-║  --background          ║  Run in background (default: true)    ║
-╚════════════════════════╩═══════════════════════════════════════╝
-```
+## ⚙️ Options
+
+See full flag reference in [swarm-init.md](swarm-init.md). Common flags:
+
+| Flag | Values | Default |
+|---|---|---|
+| `--strategy` | research, development, analysis | auto |
+| `--topology` | hierarchical, mesh, ring, star | hierarchical |
+| `--max-agents` | number | 15 |
