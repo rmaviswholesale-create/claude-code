@@ -1,0 +1,32 @@
+model_list:
+  # DeepSeek V4 Pro (chat/code model via DeepSeek API)
+  - model_name: claude-sonnet-4-6        # what Claude Code requests
+    litellm_params:
+      model: deepseek/deepseek-chat       # routes to DeepSeek-V3/V4
+      api_key: os.environ/DEEPSEEK_API_KEY
+      api_base: https://api.deepseek.com
+
+  # Map haiku (small fast model) to DeepSeek as well
+  - model_name: claude-haiku-4-5-20251001
+    litellm_params:
+      model: deepseek/deepseek-chat
+      api_key: os.environ/DEEPSEEK_API_KEY
+      api_base: https://api.deepseek.com
+
+  # Alias for any other claude model strings Claude Code might request
+  - model_name: "claude-*"
+    litellm_params:
+      model: deepseek/deepseek-chat
+      api_key: os.environ/DEEPSEEK_API_KEY
+      api_base: https://api.deepseek.com
+
+litellm_settings:
+  # Return Anthropic-format responses so Claude Code SDK works without changes
+  drop_params: true
+  set_verbose: false
+
+general_settings:
+  # Expose an Anthropic-compatible /v1/messages endpoint
+  enable_anthropic_compatibility: true
+  master_key: sk-local-proxy        # dummy key for local use
+  port: 4000
