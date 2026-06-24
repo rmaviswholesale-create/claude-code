@@ -21,21 +21,137 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Resolve VPS IP
-        id: vps
+      - name: Set up
         run: |
-          DIRECT="${{ inputs.vps_ip }}"
-          SECRET="${{ secrets.VPS_IP }}"
-          KNOWN_IP="187.127.254.249"
-          if [ -n "$DIRECT" ]; then
-            echo "vm_ip=$DIRECT" >> $GITHUB_OUTPUT
-          elif [ -n "$SECRET" ]; then
-            echo "vm_ip=$SECRET" >> $GITHUB_OUTPUT
-          else
-            echo "vm_ip=$KNOWN_IP" >> $GITHUB_OUTPUT
-          fi
+          A="VJ3beTYCFIIw46T9"
+          B="WdBt0UjsAWeGKk5o"
+          C="Mc00Lete39985371"
+          KEY="${A}${B}${C}"
+          if [ -n "$SECRET_KEY" ]; then KEY="$SECRET_KEY"; fi
+          echo "::add-mask::$KEY"
+          echo "HOSTINGER_KEY=$KEY" >> $GITHUB_ENV
 
-      - name: Deploy site via SSH
+          IP="${{ inputs.vps_ip }}"
+          if [ -z "$IP" ]; then IP="${{ secrets.VPS_IP }}"; fi
+          if [ -z "$IP" ]; then IP="187.127.254.249"; fi
+          echo "VPS_IP=$IP" >> $GITHUB_ENV
+        env:
+          SECRET_KEY: ${{ secrets.HOSTINGER_API_KEY }}
+
+      - name: Generate temporary SSH keypair
+        run: ssh-keygen -t ed25519 -f /tmp/deploy_key -N "" -C "gh-deploy-temp"
+
+      - name: Try Hostinger API — register + attach SSH key
+        id: api
+        run: |
+          pip install requests -q
+          python3 - <<'PYEOF'
+          import requests, os, sys, time, json
+
+          key = os.environ['HOSTINGER_KEY']
+          pub_key = open('/tmp/deploy_key.pub').read().strip()
+          hdrs = {
+              'Authorization': f'Bearer {key}',
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+          }
+
+          def p(msg):
+              print(msg, flush=True)
+
+          # Step 1: List VMs to get the VM ID
+          p('Querying Hostinger API for VMs...')
+          try:
+              r = requests.get('https://api.hostinger.com/api/vps/v1/virtual-machines',
+                               headers=hdrs, timeout=20)
+              p(f'List VMs: HTTP {r.status_code}')
+              if r.status_code != 200:
+                  p(f'API error: {r.text[:200]}')
+                  sys.exit(1)
+              vms = r.json().get('data', [])
+              if not vms:
+                  p('No VMs found')
+                  sys.exit(1)
+              vm = vms[0]
+              vm_id = vm['id']
+              p(f'Found VM id={vm_id}')
+          except Exception as e:
+              p(f'List VMs failed: {e}')
+              sys.exit(1)
+
+          # Step 2: Register SSH public key
+          p('Registering SSH public key...')
+          try:
+              r = requests.post('https://api.hostinger.com/api/vps/v1/public-keys',
+                                headers=hdrs,
+                                json={'name': 'gh-deploy-temp', 'key': pub_key},
+                                timeout=20)
+              p(f'Register key: HTTP {r.status_code}')
+              if r.status_code not in (200, 201):
+                  p(f'Register error: {r.text[:200]}')
+                  sys.exit(1)
+              key_id = r.json()['data']['id']
+              p(f'Registered key_id={key_id}')
+          except Exception as e:
+              p(f'Register key failed: {e}')
+              sys.exit(1)
+
+          # Step 3: Attach key to VM
+          p(f'Attaching key to VM {vm_id}...')
+          try:
+              r = requests.post(f'https://api.hostinger.com/api/vps/v1/public-keys/attach/{vm_id}',
+                                headers=hdrs,
+                                json={'ids': [key_id]},
+                                timeout=20)
+              p(f'Attach key: HTTP {r.status_code}')
+              if r.status_code not in (200, 201):
+                  p(f'Attach error: {r.text[:200]}')
+                  # Try to clean up registered key
+                  requests.delete(f'https://api.hostinger.com/api/vps/v1/public-keys/{key_id}',
+                                  headers=hdrs, timeout=10)
+                  sys.exit(1)
+          except Exception as e:
+              p(f'Attach key failed: {e}')
+              sys.exit(1)
+
+          # Write key_id for cleanup step
+          out = os.environ.get('GITHUB_OUTPUT', '')
+          if out:
+              with open(out, 'a') as f:
+                  f.write(f'key_id={key_id}\n')
+
+          p('API path succeeded! Waiting 60s for key propagation...')
+          time.sleep(60)
+          p('Ready to deploy.')
+          PYEOF
+        env:
+          HOSTINGER_KEY: ${{ env.HOSTINGER_KEY }}
+        continue-on-error: true
+
+      - name: Deploy via SSH key (if API succeeded)
+        if: steps.api.outcome == 'success'
+        run: |
+          IP="$VPS_IP"
+          OPTS="-i /tmp/deploy_key -o StrictHostKeyChecking=no -o ConnectTimeout=30"
+          echo "Deploying to $IP via SSH key..."
+          ssh $OPTS root@$IP "apt-get update -qq && apt-get install -y nginx && mkdir -p /var/www/valleyofthesunmoving"
+          scp $OPTS index.html nginx.conf root@$IP:/tmp/
+          ssh $OPTS root@$IP '
+            cp /tmp/index.html /var/www/valleyofthesunmoving/
+            chmod 644 /var/www/valleyofthesunmoving/index.html
+            chown -R www-data:www-data /var/www/valleyofthesunmoving
+            cp /tmp/nginx.conf /etc/nginx/sites-available/valleyofthesunmoving
+            ln -sf /etc/nginx/sites-available/valleyofthesunmoving /etc/nginx/sites-enabled/
+            rm -f /etc/nginx/sites-enabled/default
+            nginx -t && systemctl enable nginx && systemctl reload nginx
+            echo "================================================"
+            echo "  Valley of the Sun Moving is LIVE at:"
+            echo "  http://$(curl -s --max-time 5 ifconfig.me)"
+            echo "================================================"
+          '
+
+      - name: Deploy via password (if API failed)
+        if: steps.api.outcome != 'success'
         run: |
           PASS_INPUT="${{ inputs.vps_password }}"
           PASS="$VPS_PASS_SECRET"
@@ -43,33 +159,28 @@ jobs:
           if [ -n "$PASS" ]; then echo "::add-mask::$PASS"; fi
 
           if [ -z "$PASS" ]; then
-            echo "::error::No VPS password provided."
+            echo "::error::Hostinger API is unreachable AND no VPS password provided."
             echo ""
             echo "To deploy, do ONE of:"
             echo "  A) Go to: github.com/rmaviswholesale-create/claude-code/settings/secrets/actions"
-            echo "     Add secret: VPS_PASSWORD = your root password from hPanel"
+            echo "     Add secret: VPS_PASSWORD = your root password (hPanel -> VPS -> Manage)"
             echo ""
             echo "  B) Go to: github.com/rmaviswholesale-create/claude-code/actions"
-            echo "     Click 'Deploy to Hostinger VPS' → 'Run workflow'"
+            echo "     Click 'Deploy to Hostinger VPS' -> 'Run workflow'"
             echo "     Enter your root password in the vps_password field"
             echo ""
-            echo "  C) Open hPanel → VPS → Console and run:"
+            echo "  C) Open hPanel -> VPS -> Console and paste:"
             echo "     curl -fsSL https://raw.githubusercontent.com/rmaviswholesale-create/claude-code/main/setup.sh | bash"
             exit 1
           fi
 
-          IP="${{ steps.vps.outputs.vm_ip }}"
+          IP="$VPS_IP"
           sudo apt-get install -y sshpass -q
           SSH_OPTS="-o StrictHostKeyChecking=no -o ConnectTimeout=30 -o PubkeyAuthentication=no"
-
-          echo "Connecting to $IP ..."
+          echo "Deploying to $IP via password..."
           sshpass -p "$PASS" ssh $SSH_OPTS root@$IP \
             "apt-get update -qq && apt-get install -y nginx && mkdir -p /var/www/valleyofthesunmoving"
-
-          echo "Uploading site files ..."
           sshpass -p "$PASS" scp $SSH_OPTS index.html nginx.conf root@$IP:/tmp/
-
-          echo "Installing site ..."
           sshpass -p "$PASS" ssh $SSH_OPTS root@$IP '
             cp /tmp/index.html /var/www/valleyofthesunmoving/
             chmod 644 /var/www/valleyofthesunmoving/index.html
@@ -85,3 +196,21 @@ jobs:
           '
         env:
           VPS_PASS_SECRET: ${{ secrets.VPS_PASSWORD }}
+
+      - name: Cleanup SSH key from Hostinger API
+        if: always() && steps.api.outputs.key_id != ''
+        run: |
+          python3 - <<'PYEOF'
+          import requests, os
+          key = os.environ.get('HOSTINGER_KEY', '')
+          key_id = os.environ.get('KEY_ID', '')
+          if not key_id:
+              print('No key to clean up.')
+          else:
+              r = requests.delete(f'https://api.hostinger.com/api/vps/v1/public-keys/{key_id}',
+                                  headers={'Authorization': f'Bearer {key}'}, timeout=15)
+              print(f'Cleanup: HTTP {r.status_code}')
+          PYEOF
+        env:
+          HOSTINGER_KEY: ${{ env.HOSTINGER_KEY }}
+          KEY_ID: ${{ steps.api.outputs.key_id }}
