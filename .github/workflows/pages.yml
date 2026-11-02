@@ -24,6 +24,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Enable Pages via PAT (if GH_PAT secret exists)
+        if: ${{ secrets.GH_PAT != '' }}
+        run: |
+          curl -s -X POST \
+            -H "Authorization: Bearer ${{ secrets.GH_PAT }}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "Content-Type: application/json" \
+            https://api.github.com/repos/${{ github.repository }}/pages \
+            -d '{"build_type":"workflow"}' || true
+          echo "Pages enablement attempted via PAT"
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
         with:
